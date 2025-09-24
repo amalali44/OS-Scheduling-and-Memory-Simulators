@@ -1,0 +1,6 @@
+time: 0 1 2 3 4 5 6 7 8 9 10 11
+run : 0 0 0 1 0 1 2 0 1 0 1 0
+P0: first run=0 completion=12 TAT=12 RESP=0
+P1: first run=3 completion=11 TAT=9 RESP=1
+P2: first run=6 completion=7 TAT=3 RESP=2
+System: ctx_switches=9, avgTAT=8.000, avgRESP=1.000
