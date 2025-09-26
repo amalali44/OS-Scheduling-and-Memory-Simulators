@@ -6,22 +6,20 @@
 
 # Variables/ Macros:
 CC = gcc 
-CFLAGS= -Wall -std=c99
-PACKAGE_NAME = ali_cmpt_360_A1.zip
+CFLAGS= -std=c11 -Wall -Wextra -pedantic 
+PACKAGE_NAME = ali_cmpt_360_A2.zip
 
-#Target 1: userclean.c
-userclean: userclean.c
-	$(CC) $(CFLAGS) userclean.c -o userclean
+#Target 1: sched.c
+sched: sched.c
+	$(CC) $(CFLAGS) sched.c -o sched
 
-#Target 2: Testing
-testuserclean: userclean
-	./userclean < input.txt > usercleanOut.txt 
-	diff usercleanOut.txt expected.txt
+sched.o: sched.c sched.h
+	$(CC) $(CFLAGS) -c sched.c
 
-#Clean: Cleans out all the executable files 
+
 clean:
 	 rm *.o 
 
 #Packagae: Condenses all the specified files into a zip file
 package:
-	zip -czvf $(PACKAGE_NAME) userclean.c makefile input.txt expected.txt usercleanOut.txt README.txt
+	zip $(PACKAGE_NAME) sched.c sched.h makefile README.txt
