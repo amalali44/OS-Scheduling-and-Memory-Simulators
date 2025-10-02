@@ -110,24 +110,19 @@ int load_workload(const char *path, job_t **jobs, int *n)
     }
 
     int count = 0;
-    job_t job_list[100]; // allocate a fixed array for 100 jobs initially
+    static job_t job_list[100]; // allocate a fixed array for 100 jobs initially
 
     char line[256];
+
     while (fgets(line, sizeof(line), file)) // read each line from the file
     {
         if (line[0] == '#') // ignore lines starting with '#'
             continue;
         int pid, arrival, cpu_time;
-        if (sscanf(line, "%d %d %d", &pid, &arrival, &cpu_time) != 3 || pid < 0 || arrival < 0 || cpu_time <= 0) // parse the line for pid, arrival, cpu_time
+
+        if (sscanf(line, "%d %d %d", &pid, &arrival, &cpu_time) != 3 || pid < 0 || arrival < 0 || cpu_time <= 0) // parse the line for pid, arrival, cpu_time (add for unique pid as well)
         {
             fprintf(stderr, "Error: Invalid line format");
-            fclose(file);
-            return 1;
-        }
-
-        if (count >= 100) // im working under the asumption thart there will be no more than 100 jobs, if I should account for more, I will chnage the array into a dynamically growing one
-        {
-            fprintf(stderr, "Too many jobs (max 100)\n");
             fclose(file);
             return 1;
         }
@@ -139,7 +134,18 @@ int load_workload(const char *path, job_t **jobs, int *n)
         count++; // increment the job count
     }
     fclose(file); // close the file
-    *jobs = job_list;
+
+    *jobs = malloc(count * sizeof(job_t)); // allocate memory for the output array
+    if (!*jobs)
+    {
+        fprintf(stderr, "Error: Memory allocation failed\n");
+        return 1;
+    }
+    for (int i = 0; i < count; i++) // copy jobs to the output array
+    {
+        (*jobs)[i] = job_list[i];
+    }
+
     *n = count;
     return 0;
 }
@@ -147,135 +153,131 @@ int load_workload(const char *path, job_t **jobs, int *n)
 /* TODO: discrete-time CPU simulation with FIFO ready queue.
    FCFS: never preempt. RR: quantum countdown; when it hits 0 and job not finished, enqueue at tail.
    Track: first run (first time scheduled) and completion (t+1 on finish).
-   Build timeline run[t]=pid or -1 (idle). After finishing:
-     - ctx = count PID->PID changes (ignore idle)
+   Build test_workloads run[t]=pid or -1 (idle). After finishing:
+     - context_switches = count PID->PID changes (ignore idle)
      - TAT = completion-arrival; RESP = first run-arrival
    Print exactly:
      time: 0 1 2 ... T-1
      run : <pid or -> per tick
      Pk: first run=... completion=... TAT=... RESP=...
-     System: ctx_switches=..., avgTAT=..., avgRESP=...
+     System: context_switches_switches=..., avgTAT=..., avgRESP=...
 */
 int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
 {
-    // Only implement FCFS for Milestone 2
-    if (cfg->policy != POLICY_FCFS)
-    {
-        fprintf(stderr, "Error: Only FCFS is implemented in Milestone 2\n");
-        return 1;
-    }
+    (void)jobs;
+    (void)n;
+    (void)cfg;
+    (void)out;
 
     // Tracking arrays
-    int remaining[100];
+    int remaining_time[100];
     int first_run[100];
     int completion[100];
 
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < n; i++) // initialize arrays that keep track of each job's remaining time, first run time, and completion time
     {
-        remaining[i] = jobs[i].cpu_time;
+        remaining_time[i] = jobs[i].cpu_time;
         first_run[i] = -1;
         completion[i] = -1;
     }
 
-    // Timeline array
-    int timeline[10000]; // large enough for test workloads
-    int t = 0;           // current time tick
-    int done = 0;        // how many jobs finished
-    int prev_pid = -1;   // for context switch counting
-    int ctx = 0;         // context switch counter
+    int test_workloads[10000]; // large enough for test workloads
+    int t = 0;                 // current time tick
+    int done = 0;              // how many jobs finished
+    int prev_pid = -1;         // for context switch counting
+    int context_switches = 0;  // context switch counter
 
-    // Ready queue (stores indices of jobs)
-    int queue[100];
-    int qhead = 0, qtail = 0;
+    int queue[100]; // The ready queue (stores indices of jobs)
+    int qhead = 0;
+    int qtail = 0;
     int running = -1; // index of job currently on CPU
 
-    // -------- Main simulation loop --------
-    while (done < n)
+    // FCFS simulation loop
+    while (done < n) // while not all jobs are done. (n is the number of jobs found in the input file)
     {
-        // Step 1: enqueue any jobs that arrive at this tick
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < n; i++) // Step 1: enqueue any jobs that arrive at this tick
         {
             if (jobs[i].arrival == t)
-                queue[qtail++] = i;
+                queue[qtail++] = i; // put the job in the ready queue
         }
 
-        // Step 2: if CPU idle, pick next job from queue
-        if (running == -1 && qhead < qtail)
-            running = queue[qhead++];
-
-        // Step 3: execute for this tick
-        if (running == -1)
+        if (running == -1) // Step 2: if CPU idle, grab the next job from the 'ready' queue
         {
-            timeline[t] = -1; // CPU idle
+            if (qhead < qtail)
+                running = queue[qhead++];
+            else
+                running = -1;
+        }
+
+        if (running == -1) // Step 3: execute for this tick
+        {
+            test_workloads[t] = -1; // CPU idle
         }
         else
         {
-            if (first_run[running] == -1)
-                first_run[running] = t; // record first run
+            if (first_run[running] == -1) // if the job has never ran before
+                first_run[running] = t;   // record first run
 
-            timeline[t] = jobs[running].pid;
-            remaining[running]--;
+            test_workloads[t] = jobs[running].pid;
+            remaining_time[running]--;
 
-            if (remaining[running] == 0) // job finished
+            if (remaining_time[running] == 0) // job finished
             {
-                completion[running] = t + 1; // one past last tick
+                completion[running] = t + 1; // record finish time, the last 1
                 done++;
-                running = -1; // CPU becomes idle
+                running = -1; // CPU is now free
             }
         }
-
-        t++;
+        t++; // move to the next time tick
     }
 
-    // -------- Count context switches --------
+    //  for counting amount of context switches
     for (int i = 0; i < t; i++)
     {
-        int cur = timeline[i];
-        if (cur >= 0 && prev_pid >= 0 && cur != prev_pid)
-            ctx++;
-        if (cur >= 0)
-            prev_pid = cur;
+        int current_pid = test_workloads[i];
+        if (current_pid >= 0 && prev_pid >= 0 && current_pid != prev_pid) // count context switch if current pid and previous pid is -1, and if current pid is different from previous pid
+            context_switches++;
+        if (current_pid >= 0)       // update previous pid if current pid is not -1
+            prev_pid = current_pid; // update previous pid
     }
 
-    // -------- Print timeline --------
+    //  Print time and run metrics
     printf("time:");
-    for (int i = 0; i < t; i++)
+    for (int i = 0; i < t; i++) // print time ticks from 0 to t-1
         printf(" %d", i);
     printf("\nrun :");
+
     for (int i = 0; i < t; i++)
     {
-        if (timeline[i] < 0)
-            printf(" -");
+        if (test_workloads[i] < 0)
+            printf(" -"); // for when its idle
         else
-            printf(" %d", timeline[i]);
+            printf(" %d", test_workloads[i]);
     }
     printf("\n");
 
-    // -------- Per-process metrics --------
-    double sum_tat = 0, sum_resp = 0;
+    int total_tat = 0, total_resp = 0;
     for (int i = 0; i < n; i++)
     {
         int tat = completion[i] - jobs[i].arrival;
         int resp = first_run[i] - jobs[i].arrival;
-        sum_tat += tat;
-        sum_resp += resp;
+        total_tat += tat;
+        total_resp += resp;
 
-        printf("P%d: first run=%d completion=%d TAT=%d RESP=%d\n",
-               jobs[i].pid, first_run[i], completion[i], tat, resp);
+        printf("P%d: first run= %d completion= %d TAT= %d RESP= %d\n", jobs[i].pid, first_run[i], completion[i], tat, resp); // each job's metrics
     }
 
-    // -------- System metrics --------
-    printf("System: ctx_switches=%d, avgTAT=%.3f, avgRESP=%.3f\n",
-           ctx, sum_tat / n, sum_resp / n);
+    // Save results for the last system line
+    (*out).context_switches = context_switches;
+    (*out).avg_tat = total_tat / n;
+    (*out).avg_resp = total_resp / n;
 
-    // Save results for caller
-    out->context_switches = ctx;
-    out->avg_tat = sum_tat / n;
-    out->avg_resp = sum_resp / n;
+    printf("System: ctx_switches= %d, avgTAT= %d, avgRESP= %d\n", context_switches, (total_tat / n), total_resp / n);
 
     return 0;
 }
 
+// the main you provided for us (thank you!)
 int main(int argc, char **argv)
 {
     sim_cfg_t cfg;

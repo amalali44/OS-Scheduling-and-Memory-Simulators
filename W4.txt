@@ -1,0 +1,5 @@
+# CMPT360 A2 — Workload W2 in lab (test workload)
+# Format: PID ARRIVAL CPU_TIME
+0 0 3
+1 4 1
+2 8 1
