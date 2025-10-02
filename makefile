@@ -20,6 +20,13 @@ sched.o: sched.c sched.h
 clean:
 	 rm *.o 
 
+#valgrind: Runs the program with valgrind to check for memory leaks
+valgrind: sched
+	valgrind --leak-check=full ./sched
+
+
+
 #Packagae: Condenses all the specified files into a zip file
 package:
 	zip $(PACKAGE_NAME) sched.c sched.h makefile README.txt
+

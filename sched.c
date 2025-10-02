@@ -1,8 +1,8 @@
 /*
  * Student Name: Amal Ali
- * Student ID:   3145040
- * Date:         MS1: 09/26/2025
- * File:         sched.c
+ * Student ID: 3145040
+ * Date: MS1: 09/26/2025 | MS2: 10/2/2025 | Final submission: 10/11/2025
+ * File: sched.c
  * Description:  CPU FCFS and RR scheduling simulator
  */
 
@@ -18,11 +18,11 @@ static void usage(const char *prog)
     fprintf(stderr, "Usage: %s --policy=FCFS|RR [--quantum=N] --in=FILE\n", prog);
 }
 
-/* TODO: strict CLI
-   Required: --policy=FCFS|RR, --in=FILE
-   Optional: --quantum=N (required iff RR; N>0)
-   On error: print usage() and return non-zero.
-*/
+// /* TODO: strict CLI
+//    Required: --policy=FCFS|RR, --in=FILE
+//    Optional: --quantum=N (required iff RR; N>0)
+//    On error: print usage() and return non-zero.
+// */
 int parse_args(int argc, char **argv, sim_cfg_t *cfg, const char **input_path)
 {
     int policy = 0, in = 0, quantum = 0, quantum_val = 0; // set up counters for terminal inputs
@@ -95,13 +95,53 @@ int parse_args(int argc, char **argv, sim_cfg_t *cfg, const char **input_path)
 /* TODO: read "PID ARRIVAL CPU_TIME", ignore lines starting with '#', validate:
    pid>=0, arrival>=0, cpu>0. Sort by (arrival, pid). Return 0 on success.
 */
+
 int load_workload(const char *path, job_t **jobs, int *n)
 {
     (void)path;
     (void)jobs;
     (void)n;
-    fprintf(stderr, "TODO: load_workload() not implemented\n");
-    return 1;
+
+    FILE *file = fopen(path, "r"); // open the file in read mode
+    if (file == NULL)              // check if the file opened successfully
+    {
+        fprintf(stderr, "Error: Could not open file %s\n", path);
+        return 1;
+    }
+
+    int count = 0;
+    job_t job_list[100]; // allocate a fixed array for 100 jobs initially
+
+    char line[256];
+    while (fgets(line, sizeof(line), file)) // read each line from the file
+    {
+        if (line[0] == '#') // ignore lines starting with '#'
+            continue;
+        int pid, arrival, cpu_time;
+        if (sscanf(line, "%d %d %d", &pid, &arrival, &cpu_time) != 3 || pid < 0 || arrival < 0 || cpu_time <= 0) // parse the line for pid, arrival, cpu_time
+        {
+            fprintf(stderr, "Error: Invalid line format");
+            fclose(file);
+            return 1;
+        }
+
+        if (count >= 100) // im working under the asumption thart there will be no more than 100 jobs, if I should account for more, I will chnage the array into a dynamically growing one
+        {
+            fprintf(stderr, "Too many jobs (max 100)\n");
+            fclose(file);
+            return 1;
+        }
+
+        // assign valies to job struct
+        job_list[count].pid = pid;
+        job_list[count].arrival = arrival;
+        job_list[count].cpu_time = cpu_time;
+        count++; // increment the job count
+    }
+    fclose(file); // close the file
+    *jobs = job_list;
+    *n = count;
+    return 0;
 }
 
 /* TODO: discrete-time CPU simulation with FIFO ready queue.
@@ -118,12 +158,122 @@ int load_workload(const char *path, job_t **jobs, int *n)
 */
 int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
 {
-    (void)jobs;
-    (void)n;
-    (void)cfg;
-    (void)out;
-    fprintf(stderr, "TODO: simulate() not implemented\n");
-    return 1;
+    // Only implement FCFS for Milestone 2
+    if (cfg->policy != POLICY_FCFS)
+    {
+        fprintf(stderr, "Error: Only FCFS is implemented in Milestone 2\n");
+        return 1;
+    }
+
+    // Tracking arrays
+    int remaining[100];
+    int first_run[100];
+    int completion[100];
+
+    for (int i = 0; i < n; i++)
+    {
+        remaining[i] = jobs[i].cpu_time;
+        first_run[i] = -1;
+        completion[i] = -1;
+    }
+
+    // Timeline array
+    int timeline[10000]; // large enough for test workloads
+    int t = 0;           // current time tick
+    int done = 0;        // how many jobs finished
+    int prev_pid = -1;   // for context switch counting
+    int ctx = 0;         // context switch counter
+
+    // Ready queue (stores indices of jobs)
+    int queue[100];
+    int qhead = 0, qtail = 0;
+    int running = -1; // index of job currently on CPU
+
+    // -------- Main simulation loop --------
+    while (done < n)
+    {
+        // Step 1: enqueue any jobs that arrive at this tick
+        for (int i = 0; i < n; i++)
+        {
+            if (jobs[i].arrival == t)
+                queue[qtail++] = i;
+        }
+
+        // Step 2: if CPU idle, pick next job from queue
+        if (running == -1 && qhead < qtail)
+            running = queue[qhead++];
+
+        // Step 3: execute for this tick
+        if (running == -1)
+        {
+            timeline[t] = -1; // CPU idle
+        }
+        else
+        {
+            if (first_run[running] == -1)
+                first_run[running] = t; // record first run
+
+            timeline[t] = jobs[running].pid;
+            remaining[running]--;
+
+            if (remaining[running] == 0) // job finished
+            {
+                completion[running] = t + 1; // one past last tick
+                done++;
+                running = -1; // CPU becomes idle
+            }
+        }
+
+        t++;
+    }
+
+    // -------- Count context switches --------
+    for (int i = 0; i < t; i++)
+    {
+        int cur = timeline[i];
+        if (cur >= 0 && prev_pid >= 0 && cur != prev_pid)
+            ctx++;
+        if (cur >= 0)
+            prev_pid = cur;
+    }
+
+    // -------- Print timeline --------
+    printf("time:");
+    for (int i = 0; i < t; i++)
+        printf(" %d", i);
+    printf("\nrun :");
+    for (int i = 0; i < t; i++)
+    {
+        if (timeline[i] < 0)
+            printf(" -");
+        else
+            printf(" %d", timeline[i]);
+    }
+    printf("\n");
+
+    // -------- Per-process metrics --------
+    double sum_tat = 0, sum_resp = 0;
+    for (int i = 0; i < n; i++)
+    {
+        int tat = completion[i] - jobs[i].arrival;
+        int resp = first_run[i] - jobs[i].arrival;
+        sum_tat += tat;
+        sum_resp += resp;
+
+        printf("P%d: first run=%d completion=%d TAT=%d RESP=%d\n",
+               jobs[i].pid, first_run[i], completion[i], tat, resp);
+    }
+
+    // -------- System metrics --------
+    printf("System: ctx_switches=%d, avgTAT=%.3f, avgRESP=%.3f\n",
+           ctx, sum_tat / n, sum_resp / n);
+
+    // Save results for caller
+    out->context_switches = ctx;
+    out->avg_tat = sum_tat / n;
+    out->avg_resp = sum_resp / n;
+
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -142,10 +292,10 @@ int main(int argc, char **argv)
     sim_metrics_t m;
     if (simulate(jobs, n, &cfg, &m) != 0)
     {
-        free(jobs);
+        // free(jobs);
         return 3;
     }
 
-    free(jobs);
+    // free(jobs);
     return 0;
 }
