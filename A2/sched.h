@@ -1,9 +1,9 @@
 /*
- * Student Name: ____________________________________________
- * Student ID:   ____________________________________________
- * Date:         ____________________________________________
- * File:         ____________________________________________
- * Description:  ____________________________________________
+ * Student Name: Amal Ali
+ * Student ID:   3145040
+ * Date:         MS1: 09/26/2025 | MS2: 10/2/2025 | Final submission: 10/11/2025
+ * File:         sched.h
+ * Description:  Header file for CPU FCFS and RR scheduling simulator
  */
 #ifndef SCHED_H
 #define SCHED_H

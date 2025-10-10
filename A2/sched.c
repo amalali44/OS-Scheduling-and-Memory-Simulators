@@ -101,42 +101,46 @@ int load_workload(const char *path, job_t **jobs, int *n)
     }
 
     int count = 0;
-    static job_t job_list[100]; // allocate a fixed array for 100 jobs initially
-
     char line[256];
+    job_t *jobs_arr = malloc(100 * sizeof(job_t)); // temporary array for up to 100 jobs
+    if (!jobs_arr)
+    {
+        fprintf(stderr, "Error: Memory allocation failed\n");
+        fclose(file);
+        return 1;
+    }
 
     while (fgets(line, sizeof(line), file)) // read each line from the file
     {
         if (line[0] == '#') // ignore lines starting with '#'
             continue;
         int pid, arrival, cpu_time;
-
-        if (sscanf(line, "%d %d %d", &pid, &arrival, &cpu_time) != 3 || pid < 0 || arrival < 0 || cpu_time <= 0) // parse the line for pid, arrival, cpu_time (add for unique pid as well)
+        if (sscanf(line, "%d %d %d", &pid, &arrival, &cpu_time) != 3 || pid < 0 || arrival < 0 || cpu_time <= 0)
         {
             fprintf(stderr, "Error: Invalid line format");
+            free(jobs_arr);
             fclose(file);
             return 1;
         }
 
-        // assign valies to job struct
-        job_list[count].pid = pid;
-        job_list[count].arrival = arrival;
-        job_list[count].cpu_time = cpu_time;
-        count++; // increment the job count
+        jobs_arr[count].pid = pid;
+        jobs_arr[count].arrival = arrival;
+        jobs_arr[count].cpu_time = cpu_time;
+        count++;
     }
-    fclose(file); // close the file
-
-    *jobs = malloc(count * sizeof(job_t)); // allocate memory for the output array
+    fclose(file);
+    *jobs = malloc(count * sizeof(job_t));
     if (!*jobs)
     {
         fprintf(stderr, "Error: Memory allocation failed\n");
+        free(jobs_arr);
         return 1;
     }
-    for (int i = 0; i < count; i++) // copy jobs to the output array
+    for (int i = 0; i < count; i++)
     {
-        (*jobs)[i] = job_list[i];
+        (*jobs)[i] = jobs_arr[i];
     }
-
+    free(jobs_arr);
     *n = count;
     return 0;
 }
