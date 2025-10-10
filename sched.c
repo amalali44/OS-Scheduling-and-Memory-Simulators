@@ -18,11 +18,6 @@ static void usage(const char *prog)
     fprintf(stderr, "Usage: %s --policy=FCFS|RR [--quantum=N] --in=FILE\n", prog);
 }
 
-// /* TODO: strict CLI
-//    Required: --policy=FCFS|RR, --in=FILE
-//    Optional: --quantum=N (required iff RR; N>0)
-//    On error: print usage() and return non-zero.
-// */
 int parse_args(int argc, char **argv, sim_cfg_t *cfg, const char **input_path)
 {
     int policy = 0, in = 0, quantum = 0, quantum_val = 0; // set up counters for terminal inputs
@@ -92,10 +87,6 @@ int parse_args(int argc, char **argv, sim_cfg_t *cfg, const char **input_path)
     return 0;
 }
 
-/* TODO: read "PID ARRIVAL CPU_TIME", ignore lines starting with '#', validate:
-   pid>=0, arrival>=0, cpu>0. Sort by (arrival, pid). Return 0 on success.
-*/
-
 int load_workload(const char *path, job_t **jobs, int *n)
 {
     (void)path;
@@ -150,18 +141,6 @@ int load_workload(const char *path, job_t **jobs, int *n)
     return 0;
 }
 
-/* TODO: discrete-time CPU simulation with FIFO ready queue.
-   FCFS: never preempt. RR: quantum countdown; when it hits 0 and job not finished, enqueue at tail.
-   Track: first run (first time scheduled) and completion (t+1 on finish).
-   Build test_workloads run[t]=pid or -1 (idle). After finishing:
-     - context_switches = count PID->PID changes (ignore idle)
-     - TAT = completion-arrival; RESP = first run-arrival
-   Print exactly:
-     time: 0 1 2 ... T-1
-     run : <pid or -> per tick
-     Pk: first run=... completion=... TAT=... RESP=...
-     System: context_switches_switches=..., avgTAT=..., avgRESP=...
-*/
 int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
 {
     (void)jobs;
@@ -181,18 +160,19 @@ int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
         completion[i] = -1;
     }
 
-    int test_workloads[10000]; // large enough for test workloads
-    int t = 0;                 // current time tick
-    int done = 0;              // how many jobs finished
-    int prev_pid = -1;         // for context switch counting
-    int context_switches = 0;  // context switch counter
+    int test_workloads[10000];   // large enough for test workloads
+    int t = 0;                   // current time tick
+    int done = 0;                // how many jobs finished
+    int prev_pid = -1;           // for context switch counting
+    double context_switches = 0; // context switch counter
 
     int queue[100]; // The ready queue (stores indices of jobs)
     int qhead = 0;
     int qtail = 0;
-    int running = -1; // index of job currently on CPU
+    int running = -1;        // index of job currently on CPU
+    int quantum_counter = 0; // counter for quantum time ( RR only)
 
-    // FCFS simulation loop
+    // FCFS & RR simulation loop
     while (done < n) // while not all jobs are done. (n is the number of jobs found in the input file)
     {
         for (int i = 0; i < n; i++) // Step 1: enqueue any jobs that arrive at this tick
@@ -201,36 +181,49 @@ int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
                 queue[qtail++] = i; // put the job in the ready queue
         }
 
-        if (running == -1) // Step 2: if CPU idle, grab the next job from the 'ready' queue
+        // Step 2: if CPU idle, grab the next job from the ready queue
+        if (running == -1)
         {
             if (qhead < qtail)
-                running = queue[qhead++];
+            {
+                running = queue[qhead++]; // dequeue the next job
+                if (cfg->policy == POLICY_RR)
+                    quantum_counter = cfg->quantum; // reset quantum when a new job starts
+            }
             else
-                running = -1;
+                running = -1; // CPU remains idle
         }
 
-        if (running == -1) // Step 3: execute for this tick
+        // Step 3: execute for this tick
+        if (running == -1)
         {
-            test_workloads[t] = -1; // CPU idle
+            test_workloads[t] = -1;
         }
         else
         {
-            if (first_run[running] == -1) // if the job has never ran before
-                first_run[running] = t;   // record first run
+            if (first_run[running] == -1)
+                first_run[running] = t;
 
             test_workloads[t] = jobs[running].pid;
             remaining_time[running]--;
 
-            if (remaining_time[running] == 0) // job finished
+            if (cfg->policy == POLICY_RR) // only decrement quantum counter in RR
+                quantum_counter--;        // only decrement in RR
+
+            if (remaining_time[running] == 0)
             {
-                completion[running] = t + 1; // record finish time, the last 1
-                done++;
-                running = -1; // CPU is now free
+                completion[running] = t + 1; // job finished at t+1
+                done++;                      // increment done counter
+                running = -1;                // CPU becomes idle
+            }
+            else if (cfg->policy == POLICY_RR && quantum_counter == 0) // quantum expired in RR
+            {
+                queue[qtail++] = running; // re-enqueue the job
+                running = -1;
             }
         }
-        t++; // move to the next time tick
+        t++;
     }
-
     //  for counting amount of context switches
     for (int i = 0; i < t; i++)
     {
@@ -242,7 +235,7 @@ int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
     }
 
     //  Print time and run metrics
-    printf("time:");
+    printf("\ntime:");
     for (int i = 0; i < t; i++) // print time ticks from 0 to t-1
         printf(" %d", i);
     printf("\nrun :");
@@ -256,7 +249,7 @@ int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
     }
     printf("\n");
 
-    int total_tat = 0, total_resp = 0;
+    double total_tat = 0, total_resp = 0;
     for (int i = 0; i < n; i++)
     {
         int tat = completion[i] - jobs[i].arrival;
@@ -272,7 +265,7 @@ int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
     (*out).avg_tat = total_tat / n;
     (*out).avg_resp = total_resp / n;
 
-    printf("System: ctx_switches= %d, avgTAT= %d, avgRESP= %d\n", context_switches, (total_tat / n), total_resp / n);
+    printf("System: ctx_switches= %.3f, avgTAT= %.3f, avgRESP= %.3f\n", context_switches, (total_tat / n), total_resp / n);
 
     return 0;
 }
