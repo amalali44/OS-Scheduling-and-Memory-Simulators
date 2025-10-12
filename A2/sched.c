@@ -176,7 +176,7 @@ int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
     int running = -1;        // index of job currently on CPU
     int quantum_counter = 0; // counter for quantum time ( RR only)
 
-    // FCFS & RR simulation loop
+    // FCFS & RR simulation loop !!
     while (done < n) // while not all jobs are done. (n is the number of jobs found in the input file)
     {
         for (int i = 0; i < n; i++) // Step 1: enqueue any jobs that arrive at this tick
@@ -201,15 +201,15 @@ int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
         // Step 3: execute for this tick
         if (running == -1)
         {
-            test_workloads[t] = -1;
+            test_workloads[t] = -1; // CPU is idle
         }
         else
         {
-            if (first_run[running] == -1)
+            if (first_run[running] == -1) // record first run if not already recorded
                 first_run[running] = t;
 
             test_workloads[t] = jobs[running].pid;
-            remaining_time[running]--;
+            remaining_time[running]--; // decrement remaining time
 
             if (cfg->policy == POLICY_RR) // only decrement quantum counter in RR
                 quantum_counter--;        // only decrement in RR
@@ -239,7 +239,7 @@ int simulate(const job_t *jobs, int n, const sim_cfg_t *cfg, sim_metrics_t *out)
     }
 
     //  Print time and run metrics
-    printf("\ntime:");
+    printf("time:");
     for (int i = 0; i < t; i++) // print time ticks from 0 to t-1
         printf(" %d", i);
     printf("\nrun :");
