@@ -27,5 +27,5 @@ valgrind: sched
 
 #Packagae: Condenses all the specified files into a zip file
 package:
-	zip -czvf $(PACKAGE_NAME) sched.c sched.h makefile README.md Workload_Expected Workload_Samples
+	tar -czvf $(PACKAGE_NAME) sched.c sched.h makefile README.md Workload_Expected Workload_Samples
 
