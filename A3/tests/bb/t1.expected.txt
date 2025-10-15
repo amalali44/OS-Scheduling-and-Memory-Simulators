@@ -1,0 +1,6 @@
+R 0   -> PA 4096 ; ok
+W 10   -> PA 4106 ; ok
+R 63   -> PA 4159 ; ok
+W 4096 -> fault: BOUNDS
+== stats ==
+accesses=4, ok=3, faults.bounds=1

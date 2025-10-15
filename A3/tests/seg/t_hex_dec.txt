@@ -1,0 +1,5 @@
+# DECIMAL-ONLY VERSION (no hex present)
+X code 0
+R data 1
+W data 2
+R stack 0
