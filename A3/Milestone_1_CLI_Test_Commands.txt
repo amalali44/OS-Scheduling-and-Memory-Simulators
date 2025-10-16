@@ -1,0 +1,24 @@
+CMPT 360 — A3 Milestone1 CLI Tests: Commands
+=================================
+# --- BB mode: success ---
+./vmsim --mode=bb --base=4096 --limit=64 --trace=tests/bb/t1.txt
+
+# --- BB mode: failures and print usage ---
+./vmsim --mode=bb --base=4096 --limit=64                         # missing --trace
+./vmsim --mode=bb --base=4096 --trace=tests/bb/t1.txt            # missing --limit
+./vmsim --mode=bb --limit=64  --trace=tests/bb/t1.txt            # missing --base
+./vmsim --mode=bb --base=0x1000 --limit=64 --trace=tests/bb/t1.txt  # hex base (invalid)
+./vmsim --mode=bb --base=4096 --limit=0x40 --trace=tests/bb/t1.txt  # hex limit (invalid)
+./vmsim --mode=bb --base=4096 --limit=-1  --trace=tests/bb/t1.txt   # negative limit
+./vmsim --mode=bb --base=4096 --limit=64 --trace=tests/bb/t1.txt --foo  # unknown option
+./vmsim --mode=bb --base=4096 --limit=64 --trace=tests/bb/NOPE.txt     # missing trace file
+
+# --- SEG mode: success ---
+./vmsim --mode=seg --config=tests/seg/three-seg.ini --trace=tests/seg/t2.txt
+
+# --- SEG mode: failures and print usage ---
+./vmsim --mode=seg --trace=tests/seg/t2.txt                         # missing --config
+./vmsim --mode=seg --config=tests/seg/three-seg.ini                 # missing --trace
+./vmsim --mode=seg --config=tests/seg/three-seg.ini --trace=tests/seg/t2.txt --foo  # unknown option
+./vmsim --mode=seg --config=tests/seg/NOPE.ini --trace=tests/seg/t2.txt            # bad config path
+./vmsim --mode=seg --config=tests/seg/three-seg.ini --trace=tests/seg/NOPE.txt     # bad trace path

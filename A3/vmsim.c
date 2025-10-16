@@ -15,11 +15,7 @@
 // usage
 static void usage(const char *prog)
 {
-    fprintf(stderr,
-            "Usage:\n"
-            "  %s --mode=bb  --base=N --limit=N --trace=FILE \n"
-            "  %s --mode=seg --config=FILE --trace=FILE \n",
-            prog, prog);
+    fprintf(stderr, "Usage:\n  %s --mode=bb  --base=N --limit=N --trace=FILE \n  %s --mode=seg --config=FILE --trace=FILE \n", prog, prog);
 }
 
 // CLI
@@ -27,68 +23,93 @@ bool parse_args(int argc, char **argv, sim_opts_t *o)
 {
     (void)argc;
     (void)argv;
-    if (o)
-        memset(o, 0, sizeof(*o));
+    if (!o) // null pointer
+        return false;
 
-    for (int i = 1; i < argc; i++) // while there are arguments in the count
+    for (int i = 1; i < argc; i++) // start from 1 to skip program name and go through all arguments in the command line
     {
-        if (strncmp(argv[i], "--mode=", 7) == 0)
+        if (strncmp(argv[i], "--mode=", 7) == 0) // check if the argument starts with --mode=
         {
-            const char *user_input = argv[i] + 7; // check the input after 7 characters (after --mode=)
-            if (strcmp(user_input, "bb") == 0)    // check if they put valid policy input 1: bb
-            {
+            const char *m = argv[i] + 7;
+            if (strcmp(m, "bb") == 0)
                 o->mode = MODE_BB;
-            }
-            if (strncmp(argv[i], "--base=", 7) == 0) // check if they put valid input for base
-            {
-                char *endptr;
-                errno = 0;                                    // reset errno before call
-                long val = strtol(argv[i] + 7, &endptr, 10);  // convert string to long
-                if (errno != 0 || *endptr != '\0' || val < 0) // check for conversion errors or negative values
-                {
-                    usage(argv[0]);
-                    return 1;
-                }
-                o->base = val;
-            }
-            else if (strncmp(argv[i], "--limit=", 8) == 0) // check if they put valid input for limit
-            {
-                char *endptr;
-                errno = 0;                                     // reset errno before call
-                long val = strtol(argv[i] + 8, &endptr, 10);   // convert string to long
-                if (errno != 0 || *endptr != '\0' || val <= 0) // check for conversion errors or non-positive values
-                {
-                    usage(argv[0]);
-                    return 1;
-                }
-                o->limit = val;
-            }
-            else if (strncmp(argv[i], "--trace=", 8) == 0) // check if they put valid input for trace file path
-            {
-                o->trace_path = argv[i] + 8; // set the trace path to the user input after --trace=
-            }
-            else if (strncmp(argv[i], "--config=", 9) == 0) // check if they put valid input for config file path
-            {
-                o->config_path = argv[i] + 9; // set the config path to the user input after --config=
-            }
-            else if (strcmp(user_input, "seg") == 0) // Check if they put valid policy input 2: seg
-            {
+            else if (strcmp(m, "seg") == 0)
                 o->mode = MODE_SEG;
-            }
             else
             {
-                usage(argv[0]); // else print usage and return 1
-                return 1;
+                return false;
             }
         }
+        else if (strncmp(argv[i], "--base=", 7) == 0) // check if the argument starts with --base=
+        {
+            const char *p = argv[i] + 7; // pointer to the character after =
+            if (*p == '\0')
+                return false;
+            o->base = atoi(p); // convert string to int
+        }
+        else if (strncmp(argv[i], "--limit=", 8) == 0) // check if the argument starts with --limit=
+        {
+            const char *p = argv[i] + 8;
+            if (*p == '\0')
+                return false;
+            o->limit = atoi(p); // convert string to int
+        }
+
+        else if (strncmp(argv[i], "--config=", 9) == 0) // check if the argument starts with --config=
+        {
+            o->config_path = argv[i] + 9; // saving the config path
+            if (*o->config_path == '\0')
+                return false;
+        }
+        else if (strncmp(argv[i], "--trace=", 8) == 0) // check if the argument starts with --trace=
+        {
+            o->trace_path = argv[i] + 8; // saving the trace path
+            if (*o->trace_path == '\0')
+                return false;
+        }
+        else
+            return false;
     }
+
+    if (o->mode == MODE_BB)
+    {
+        if (!o->trace_path || o->base < 0 || o->limit <= 0) // base must be >=0, limit must be >0
+            return false;
+    }
+    else if (o->mode == MODE_SEG)
+    {
+        if (!o->trace_path || !o->config_path) // both trace and config paths must be provided
+            return false;
+    }
+    else
+    {
+        return false;
+    }
+
+    return true;
 }
+
 // bb
 int run_bb(const sim_opts_t *o, stats_t *st)
 {
     (void)o;
     (void)st;
-    fprintf(stderr, "TODO: run_bb()\n");
+
+    FILE *fp = fopen((*o).trace_path, "r");
+    if (fp == NULL)
+    {
+        fprintf(stderr, "Error: Could not open file %s\n", (*o).trace_path);
+        return 1;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) // read each line from the file
+    {
+        if (line[0] == '#' || isspace(line[0])) // ignore lines starting with '#'
+            continue;
+        printf("%s", line); // read line by line, and print to the terminal
+    }
+    fclose(fp);
     return 0;
 }
 
@@ -97,7 +118,20 @@ int run_seg(const sim_opts_t *o, stats_t *st)
 {
     (void)o;
     (void)st;
-    fprintf(stderr, "TODO: run_seg()\n");
+    FILE *fp = fopen((*o).config_path, "r");
+    if (fp == NULL)
+    {
+        fprintf(stderr, "Error: Could not open file %s\n", (*o).config_path);
+        return 1;
+    }
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) // read line by line
+    {
+        if (line[0] == '#' || isspace(line[0])) // ignore lines starting with '#'
+            continue;
+        printf("%s", line); // print line by line
+    }
+    fclose(fp);
     return 0;
 }
 
