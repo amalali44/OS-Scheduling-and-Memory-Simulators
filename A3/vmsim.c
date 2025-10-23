@@ -89,27 +89,52 @@ bool parse_args(int argc, char **argv, sim_opts_t *o)
     return true;
 }
 
-// bb
 int run_bb(const sim_opts_t *o, stats_t *st)
 {
-    (void)o;
-    (void)st;
-
-    FILE *fp = fopen((*o).trace_path, "r");
-    if (fp == NULL)
+    FILE *fp = fopen(o->trace_path, "r");
+    if (!fp)
     {
-        fprintf(stderr, "Error: Could not open file %s\n", (*o).trace_path);
-        return 1;
+        fprintf(stderr, "Error: cannot open trace file %s\n", o->trace_path);
+        return 2;
     }
 
-    char line[256];
-    while (fgets(line, sizeof(line), fp)) // read each line from the file
+    char op;
+    long va;
+    char line[256]; // buffer for each line
+
+    while (fgets(line, sizeof(line), fp))
     {
-        if (line[0] == '#' || isspace(line[0])) // ignore lines starting with '#'
+        // skip comments and blank lines
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r')
             continue;
-        printf("%s", line); // read line by line, and print to the terminal
+
+        if (sscanf(line, " %c %ld", &op, &va) != 2) // parse op (operation) and va (virtual address)
+            continue;
+
+        if (op != 'R' && op != 'W' && op != 'X') // invalid operation
+            continue;
+
+        st->accesses++; // increment total accesses
+
+        if (va < 0 || va >= o->limit)
+        {
+            st->faults_bounds++; // increment bounds faults
+            printf("%c %ld -> fault: BOUNDS\n", op, va);
+        }
+        else
+        {
+            int pa = o->base + va;
+            st->ok++; // increment successful accesses
+            printf("%c %ld -> PA %d ; ok\n", op, va, pa);
+        }
     }
+
     fclose(fp);
+
+    printf("\n== stats ==\n");
+    printf("accesses=%lu, ok=%lu, faults.bounds=%lu\n",
+           st->accesses, st->ok, st->faults_bounds);
+
     return 0;
 }
 
