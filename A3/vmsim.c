@@ -88,45 +88,47 @@ bool parse_args(int argc, char **argv, sim_opts_t *o)
 
     return true;
 }
+
+// bb
 int run_bb(const sim_opts_t *o, stats_t *st)
 {
-    FILE *file = fopen(o->trace_path, "r");
+    FILE *file = fopen((*o).trace_path, "r");
     if (file == NULL)
     {
-        fprintf(stderr, "Error: cannot open trace file %s\n", o->trace_path);
+        fprintf(stderr, "Error: cannot open trace file %s\n", (*o).trace_path);
         return 1;
     }
 
-    char line[256];   // buffer to hold each line from the trace file
-    int line_num = 0; // line number for error reporting
+    char line[256];      // buffer to hold each line from the trace file
+    int line_number = 0; // line number for error reporting
 
     while (fgets(line, sizeof(line), file))
     {
-        line_num++; // increment line number because we're on a new line
+        line_number++; // increment line number because we're on a new line
 
         // Ignore comments and blank lines
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\r')
             continue;
 
-        char op = 0;
+        char op; // operation: R, W, X
         char adress_array[128] = {0};
         int parts = sscanf(line, " %c %s", &op, adress_array); // read ops (operation) and addr (address)
 
         // Invalid operation
-        if (!(op == 'R' || op == 'W' || op == 'X'))
+        if (!(op == 'R' || op == 'W'))
         {
-            fprintf(stderr, "trace: %s:%d: malformed: op must be R/W/X, we got \"%c\"\n", o->trace_path, line_num, op);
+            fprintf(stderr, "trace: %s:%d: malformed: op must be R/W, we got \"%c\"\n", (*o).trace_path, line_number, op);
             continue;
         }
 
-        // If the part after the op is a comment '#', dont count it as an address
+        // If the part after the opperation is a comment '#', dont count it as an address and return an error message
         if ((parts == 2 && adress_array[0] == '#') || parts == 1)
         {
-            fprintf(stderr, "trace: %s:%d: malformed: expected \"OP ADDR\"\n", o->trace_path, line_num);
+            fprintf(stderr, "trace: %s:%d: malformed: expected \"OP ADDR\"\n", (*o).trace_path, line_number);
             continue;
         }
 
-        // Validate adress_array is all decimal digits
+        // Validate address_array is all decimal digits
         int all_digits = 1;
         for (const char *p = adress_array; *p; ++p)
         {
@@ -137,9 +139,9 @@ int run_bb(const sim_opts_t *o, stats_t *st)
             }
         }
 
-        if (!all_digits) // check if all address characters are digits, if not, print error and continue
+        if (all_digits == 0) // check if all address characters are digits, if not, print error and continue
         {
-            fprintf(stderr, "trace: %s:%d: bad address \"%s\" (not  decimal)\n", o->trace_path, line_num, adress_array);
+            fprintf(stderr, "trace: %s:%d: bad address \"%s\" (not a decimal)\n", (*o).trace_path, line_number, adress_array);
             continue;
         }
 
@@ -147,7 +149,7 @@ int run_bb(const sim_opts_t *o, stats_t *st)
 
         st->accesses++; // increment total accesses
 
-        if (addr >= 0 && addr < o->limit) // check bounds
+        if (addr >= 0 && addr < (*o).limit) // check bounds
         {
             int pa = o->base + addr;
             st->ok++;

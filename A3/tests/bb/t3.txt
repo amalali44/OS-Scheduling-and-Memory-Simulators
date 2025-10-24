@@ -2,5 +2,5 @@
 
 R hello world
 9 10
-R 5
+    R 5   #should ignore white space before opperation 
 W 44096
