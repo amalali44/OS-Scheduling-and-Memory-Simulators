@@ -88,52 +88,84 @@ bool parse_args(int argc, char **argv, sim_opts_t *o)
 
     return true;
 }
-
 int run_bb(const sim_opts_t *o, stats_t *st)
 {
-    FILE *fp = fopen(o->trace_path, "r");
-    if (!fp)
+    FILE *file = fopen(o->trace_path, "r");
+    if (file == NULL)
     {
         fprintf(stderr, "Error: cannot open trace file %s\n", o->trace_path);
-        return 2;
+        return 1;
     }
 
-    char op;
-    long va;
-    char line[256]; // buffer for each line
+    char line[256];   // buffer to hold each line from the trace file
+    int line_num = 0; // line number for error reporting
 
-    while (fgets(line, sizeof(line), fp))
+    while (fgets(line, sizeof(line), file))
     {
-        // skip comments and blank lines
+        line_num++; // increment line number because we're on a new line
+
+        // Ignore comments and blank lines
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\r')
             continue;
 
-        if (sscanf(line, " %c %ld", &op, &va) != 2) // parse op (operation) and va (virtual address)
-            continue;
+        char op = 0;
+        char adress_array[128] = {0};
+        int parts = sscanf(line, " %c %s", &op, adress_array); // read ops (operation) and addr (address)
 
-        if (op != 'R' && op != 'W' && op != 'X') // invalid operation
+        // Invalid operation
+        if (!(op == 'R' || op == 'W' || op == 'X'))
+        {
+            fprintf(stderr, "trace: %s:%d: malformed: op must be R/W/X, we got \"%c\"\n", o->trace_path, line_num, op);
             continue;
+        }
+
+        // If the part after the op is a comment '#', dont count it as an address
+        if ((parts == 2 && adress_array[0] == '#') || parts == 1)
+        {
+            fprintf(stderr, "trace: %s:%d: malformed: expected \"OP ADDR\"\n", o->trace_path, line_num);
+            continue;
+        }
+
+        // Validate adress_array is all decimal digits
+        int all_digits = 1;
+        for (const char *p = adress_array; *p; ++p)
+        {
+            if (!isdigit((unsigned char)*p))
+            {
+                all_digits = 0;
+                break;
+            }
+        }
+
+        if (!all_digits) // check if all address characters are digits, if not, print error and continue
+        {
+            fprintf(stderr, "trace: %s:%d: bad address \"%s\" (not  decimal)\n", o->trace_path, line_num, adress_array);
+            continue;
+        }
+
+        int addr = atoi(adress_array); // use ascii to integer conversion function to get the address in decimal form for the bounds check
 
         st->accesses++; // increment total accesses
 
-        if (va < 0 || va >= o->limit)
+        if (addr >= 0 && addr < o->limit) // check bounds
         {
-            st->faults_bounds++; // increment bounds faults
-            printf("%c %ld -> fault: BOUNDS\n", op, va);
+            int pa = o->base + addr;
+            st->ok++;
+            printf("%c %d -> PA %d ; ok\n", op, addr, pa);
         }
+
         else
         {
-            int pa = o->base + va;
-            st->ok++; // increment successful accesses
-            printf("%c %ld -> PA %d ; ok\n", op, va, pa);
+            st->faults_bounds++;
+            printf("%c %d -> fault: BOUNDS\n", op, addr);
         }
     }
 
-    fclose(fp);
+    fclose(file);
 
+    // Print summary
     printf("\n== stats ==\n");
-    printf("accesses=%lu, ok=%lu, faults.bounds=%lu\n",
-           st->accesses, st->ok, st->faults_bounds);
+    printf("accesses=%lu, ok=%lu, faults.bounds=%lu\n", (*st).accesses, (*st).ok, (*st).faults_bounds);
 
     return 0;
 }
