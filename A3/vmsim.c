@@ -177,8 +177,10 @@ int run_seg(const sim_opts_t *o, stats_t *st)
 {
     (void)o;
     (void)st;
-    seg_table_t table = {0};
+    seg_table_t table = {0}; // initialize segment table
+    segment_t seg = {0};     // temporary segment to hold parsed data
 
+    // --- Read config file ---
     FILE *fp = fopen((*o).config_path, "r");
     if (fp == NULL)
     {
@@ -191,16 +193,15 @@ int run_seg(const sim_opts_t *o, stats_t *st)
         if (line[0] == '#' || isspace(line[0])) // ignore lines starting with '#'
             continue;
 
-        segment_t s = {0};
-        if (sscanf(line, "%31s %ld %ld %3s",
-                   s.name, &s.base, &s.limit, s.perms) == 4)
+        if (sscanf(line, "%s %ld %ld %s", seg.name, &seg.base, &seg.limit, seg.perms) == 4) // check if all 4 items are read
         {
-            s.in_use = true;
-            table.segs[table.nsegs++] = s;
+            seg.in_use = true;               // mark segment as in use
+            table.segs[table.nsegs++] = seg; // add segment to table and increment segment count
         }
     }
     fclose(fp);
-    // --- Process trace file ---
+
+    // --- Process the trace file ---
     FILE *trace = fopen(o->trace_path, "r");
     if (!trace)
     {
@@ -211,41 +212,39 @@ int run_seg(const sim_opts_t *o, stats_t *st)
     int line_num = 0;
     while (fgets(line, sizeof(line), trace))
     {
-        line_num++;
+        // line_num++;
 
-        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r')
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') // ignore comments and blank lines
             continue;
 
         char op;
         char segname[32];
-        long offset;
+        int offset;
 
-        int matched = sscanf(line, " %c %31s %ld", &op, segname, &offset);
-        if (matched != 3)
+        int matched = sscanf(line, " %c %s %d", &op, segname, &offset); // read operation, segment name, and offset
+
+        if (matched != 3 || offset < 0) // if there isnt opperation, seg, or offset
         {
-            fprintf(stderr,
-                    "trace: %s:%d: malformed: expected \"OP SEG OFFSET\"\n",
-                    o->trace_path, line_num);
+            fprintf(stderr, "trace: %s:%d: malformed: expected \"OP SEG OFFSET\"\n", o->trace_path, line_num);
             continue;
         }
-
         st->accesses++;
 
-        // --- Locate segment ---
+        // --- check segments ---
         segment_t *seg = NULL;
-        for (size_t i = 0; i < table.nsegs; i++)
+        for (size_t i = 0; i < table.nsegs; i++) // iterate through segments in the table
         {
-            if (strcmp(table.segs[i].name, segname) == 0)
+            if (strcmp(table.segs[i].name, segname) == 0) // if the segment name matches with one in the table
             {
-                seg = &table.segs[i];
+                seg = &table.segs[i]; // point to that segment
                 break;
             }
         }
 
-        if (!seg)
+        if (!seg) // if segment not found
         {
             st->faults_noseg++;
-            printf("%c %s %ld -> fault: NOSEG\n", op, segname, offset);
+            printf("%c %s %d -> fault: NOSEG\n", op, segname, offset);
             continue;
         }
 
@@ -253,37 +252,70 @@ int run_seg(const sim_opts_t *o, stats_t *st)
         if (offset < 0 || offset >= seg->limit)
         {
             st->faults_bounds++;
-            printf("%c %s %ld -> fault: BOUNDS\n", op, segname, offset);
+            printf("%c %s %d -> fault: BOUNDS\n", op, segname, offset);
             continue;
         }
 
         // --- Permission check ---
-        bool can_read = strchr(seg->perms, 'r') != NULL;
-        bool can_write = strchr(seg->perms, 'w') != NULL;
-        bool can_exec = strchr(seg->perms, 'x') != NULL;
+        int allowed = 0;
 
-        bool prot_fault = false;
-        if (op == 'R' && !can_read)
-            prot_fault = true;
-        else if (op == 'W' && !can_write)
-            prot_fault = true;
-        else if (op == 'X' && !can_exec)
-            prot_fault = true;
+        for (int i = 0; seg->perms[i] != '\0'; i++)
+        {
+            if ((op == 'R' && seg->perms[i] == 'r') || (op == 'W' && seg->perms[i] == 'w') || (op == 'X' && seg->perms[i] == 'x'))
+            {
+                allowed = 1;
+                break;
+            }
+        }
 
-        if (prot_fault)
+        if (!allowed)
         {
             st->faults_prot++;
-            printf("%c %s %ld -> fault: PROT\n", op, segname, offset);
+            printf("%c %s %d -> fault: PROTECTION\n", op, segname, offset);
             continue;
         }
 
-        // --- Successful translation ---
-        long pa = seg->base + offset;
-        st->ok++;
-        seg->hits++;
-        printf("%c %s %ld -> PA %ld ; ok\n", op, segname, offset, pa);
-    }
+        // --- Address translation ---
+        long pa;
+        int valid = 0;
 
+        if (strcmp(seg->name, "stack") == 0)
+        {
+            long offsigned = offset - seg->limit;           // calculate signed offset for stack segment
+            if (offsigned >= -seg->limit && offsigned <= 0) // check bounds for stack segment
+            {
+                pa = seg->base + offsigned; // calculate physical address
+                valid = 1;                  // mark as valid
+            }
+            else
+            {
+                st->faults_bounds++;                                        // else increment bounds fault counter
+                printf("%c %s %d -> fault: BOUNDS\n", op, segname, offset); // print fault message
+                continue;
+            }
+        }
+        else
+        {
+            if (offset >= 0 && offset < seg->limit) // for non-stack segments, check bounds
+            {
+                pa = seg->base + offset; // calculate physical address
+                valid = 1;
+            }
+            else
+            {
+                st->faults_bounds++;
+                printf("%c %s %d -> fault: BOUNDS\n", op, segname, offset); // else print bounds fault message
+                continue;
+            }
+        }
+
+        if (valid)
+        {
+            st->ok++;
+            seg->hits++;
+            printf("%c %s %d -> PA %ld ; ok\n", op, segname, offset, pa);
+        }
+    }
     fclose(trace);
 
     // --- Summary ---
@@ -291,6 +323,14 @@ int run_seg(const sim_opts_t *o, stats_t *st)
     printf("accesses=%lu, ok=%lu, faults.bounds=%lu, faults.prot=%lu, faults.noseg=%lu\n",
            st->accesses, st->ok, st->faults_bounds, st->faults_prot, st->faults_noseg);
 
+    printf("seg hits:");
+    for (size_t i = 0; i < table.nsegs; i++)
+    {
+        printf(" %s=%lu", table.segs[i].name, table.segs[i].hits);
+        if (i + 1 < table.nsegs)
+            printf(",");
+    }
+    printf("\n");
     return 0;
 }
 

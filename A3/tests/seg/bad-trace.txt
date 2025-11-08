@@ -1,4 +1,4 @@
 # 1
 X code 0
-R data xyz         # bad offset (not decimal)
+R heap xyz         # bad offset (not decimal)
 W 10               # wrong shape: missing segment

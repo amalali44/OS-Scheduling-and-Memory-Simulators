@@ -6,7 +6,7 @@
 
 # Variables/ Macros:
 CC = gcc 
-CFLAGS= -std=c11 -Wall -Wextra -pedantic 
+CFLAGS = -std=c11 -Wall -Wextra -pedantic 
 PACKAGE_NAME = ali_cmpt_360_A3.zip
 
 #Target 1: vmsim.c

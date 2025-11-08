@@ -1,8 +1,8 @@
 X code 0 -> PA 4096 ; ok
-R data 10 -> PA 8202 ; ok
+R heap 10 -> PA 8202 ; ok
 W code 1 -> fault: PROTECTION (needed 'w', have 'rx')
 R stack 65 -> fault: BOUNDS
 == stats ==
 accesses=4, ok=2, faults.bounds=1
 faults.prot=1, faults.noseg=0
-seg_hits: code=1, data=1, stack=0
+seg_hits: code=1, heap=1, stack=0
