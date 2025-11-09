@@ -27,5 +27,5 @@ valgrind: vmsim
 
 #Packagae: Condenses all the specified files into a zip file
 package:
-	zip $(PACKAGE_NAME) vmsim.c vmsim.h makefile README.md tests
+	zip -r $(PACKAGE_NAME) vmsim.c vmsim.h README.md tests makefile
 

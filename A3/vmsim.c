@@ -221,7 +221,7 @@ int run_seg(const sim_opts_t *o, stats_t *st)
         char segname[32];
         int offset;
 
-        int matched = sscanf(line, " %c %s %d", &op, segname, &offset); // read operation, segment name, and offset
+        int matched = sscanf(line, " %c %s %d", &op, segname, &offset); // read operati
 
         if (matched != 3 || offset < 0) // if there isnt opperation, seg, or offset
         {
